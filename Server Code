@@ -1,0 +1,73 @@
+import socket
+import threading
+import os
+
+# Configure server host and port
+HOST = '127.0.0.1'
+PORT = 12345
+
+# Dictionary to store clients
+clients = {}
+
+# Handler for client connections
+def handle_client(conn, addr):
+    print(f"[NEW CONNECTION] {addr} connected.")
+    clients[addr] = conn
+    try:
+        while True:
+            data = conn.recv(1024).decode()
+            if not data:
+                break
+            handle_command(conn, addr, data)
+    except ConnectionResetError:
+        pass
+    finally:
+        print(f"[DISCONNECTED] {addr} disconnected.")
+        del clients[addr]
+        conn.close()
+
+# Command handler
+def handle_command(conn, addr, data):
+    command = data.split()
+    if command[0] == "/store" and len(command) == 2:
+        send_file(conn, command[1])
+    elif command[0] == "/get" and len(command) == 2:
+        fetch_file(conn, command[1])
+    elif command[0] == "/dir":
+        list_files(conn)
+    elif command[0] == "/leave":
+        conn.sendall("Goodbye!".encode())
+        conn.close()
+    else:
+        conn.sendall("Invalid command.".encode())
+
+# Function to send file
+def send_file(conn, filename):
+    if os.path.exists(filename):
+        with open(filename, "rb") as f:
+            conn.sendall(f.read())
+        conn.sendall(f"File {filename} sent.".encode())
+    else:
+        conn.sendall("Error: File not found.".encode())
+
+# Function to fetch file
+def fetch_file(conn, filename):
+    conn.sendall(f"Requesting {filename} from server...".encode())
+
+# Function to list files
+def list_files(conn):
+    files = os.listdir(".")
+    conn.sendall("\n".join(files).encode())
+
+# Start server
+def start_server():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind((HOST, PORT))
+    server.listen()
+    print(f"[STARTING] Server is running on {HOST}:{PORT}")
+    while True:
+        conn, addr = server.accept()
+        thread = threading.Thread(target=handle_client, args=(conn, addr))
+        thread.start()
+
+start_server()
