@@ -1,73 +1,41 @@
 import socket
 import threading
-import os
 
-# Configure server host and port
-HOST = '127.0.0.1'
-PORT = 12345
+# Configure server connection
+SERVER_HOST = '127.0.0.1'
+SERVER_PORT = 12345
 
-# Dictionary to store clients
-clients = {}
+# Connect to server
+client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client.connect((SERVER_HOST, SERVER_PORT))
 
-# Handler for client connections
-def handle_client(conn, addr):
-    print(f"[NEW CONNECTION] {addr} connected.")
-    clients[addr] = conn
-    try:
-        while True:
-            data = conn.recv(1024).decode()
-            if not data:
-                break
-            handle_command(conn, addr, data)
-    except ConnectionResetError:
-        pass
-    finally:
-        print(f"[DISCONNECTED] {addr} disconnected.")
-        del clients[addr]
-        conn.close()
+# Function to send commands
+def send_command(command):
+    client.sendall(command.encode())
+    response = client.recv(1024).decode()
+    print("Server:", response)
 
-# Command handler
-def handle_command(conn, addr, data):
-    command = data.split()
-    if command[0] == "/store" and len(command) == 2:
-        send_file(conn, command[1])
-    elif command[0] == "/get" and len(command) == 2:
-        fetch_file(conn, command[1])
-    elif command[0] == "/dir":
-        list_files(conn)
-    elif command[0] == "/leave":
-        conn.sendall("Goodbye!".encode())
-        conn.close()
-    else:
-        conn.sendall("Invalid command.".encode())
-
-# Function to send file
-def send_file(conn, filename):
-    if os.path.exists(filename):
-        with open(filename, "rb") as f:
-            conn.sendall(f.read())
-        conn.sendall(f"File {filename} sent.".encode())
-    else:
-        conn.sendall("Error: File not found.".encode())
-
-# Function to fetch file
-def fetch_file(conn, filename):
-    conn.sendall(f"Requesting {filename} from server...".encode())
-
-# Function to list files
-def list_files(conn):
-    files = os.listdir(".")
-    conn.sendall("\n".join(files).encode())
-
-# Start server
-def start_server():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((HOST, PORT))
-    server.listen()
-    print(f"[STARTING] Server is running on {HOST}:{PORT}")
+# Listening thread for server responses
+def receive_messages():
     while True:
-        conn, addr = server.accept()
-        thread = threading.Thread(target=handle_client, args=(conn, addr))
-        thread.start()
+        try:
+            message = client.recv(1024).decode()
+            if message:
+                print("Server:", message)
+        except:
+            print("[ERROR] Connection closed.")
+            break
 
-start_server()
+# Start receiving thread
+thread = threading.Thread(target=receive_messages)
+thread.start()
+
+# Send commands to server
+print("Enter commands:")
+while True:
+    cmd = input("> ")
+    send_command(cmd)
+    if cmd == "/leave":
+        break
+
+client.close()
