@@ -1,0 +1,58 @@
+import socket
+import threading
+import os
+
+def receive_messages():
+    while True:
+        try:
+            message = client.recv(1024).decode()
+            if message:
+                print("Server:", message)
+        except:
+            print("[ERROR] Connection closed.")
+            break
+
+def send_command(cmd):
+    try:
+        client.send(cmd.encode())
+    except ConnectionError:
+        print("[ERROR] Failed to send command.")
+
+def send_file(file_path):
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as file:
+            client.send(f"/file {os.path.basename(file_path)}".encode())
+            while chunk := file.read(1024):
+                client.send(chunk)
+            client.send(b"/endfile")
+    else:
+        print("[ERROR] File does not exist.")
+
+# Create a socket object
+client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# Connect to the server
+server_address = ('localhost', 12345)  # Replace with your server's address and port
+client.connect(server_address)
+
+# Start receiving thread
+thread = threading.Thread(target=receive_messages)
+thread.start()
+
+# Send commands to server
+print("Enter commands:")
+try:
+    while True:
+        cmd = input("> ")
+        if cmd.startswith("/sendfile "):
+            file_path = cmd.split(" ", 1)[1]
+            send_file(file_path)
+        else:
+            send_command(cmd)
+        if cmd == "/leave":
+            break
+except Exception as e:
+    print(f"An error occurred: {e}")
+finally:
+    client.close()
+    thread.join()
