@@ -18,9 +18,18 @@ clients = {}
 
 
 def handle_client(client_socket, client_addr):
+    """
+    Handles communication with a connected client.
+
+    Args:
+        client_socket (socket.socket): The socket object for the client connection.
+        client_addr (tuple): The address of the connected client.
+    """
+
     alias = None
     joined = False
 
+    # Sends a welcome message to the client
     client_socket.send(b"Welcome to the File Exchange Server!")
 
     while True:
@@ -28,6 +37,8 @@ def handle_client(client_socket, client_addr):
             # Processes incoming data from the client
             data = client_socket.recv(1024).decode("utf-8").strip()
 
+            # Checks if the client has stopped sending data
+            # or if the connection has been closed
             if not data:
                 break
 
@@ -88,6 +99,7 @@ def handle_client(client_socket, client_addr):
 
             elif data.startswith("/store"):
                 if not alias:
+                    # Outputs an error if the client hasn't registered yet
                     client_socket.send(b"Error: Please register first.")
                 else:
                     parts = data.split()
@@ -101,6 +113,7 @@ def handle_client(client_socket, client_addr):
                         filename = parts[1]
                         file_path = os.path.join(SERVER_DIR, filename)
 
+                        # Receives and stores the file data
                         with open(file_path, "wb") as f:
                             file_data = client_socket.recv(4096)
                             f.write(file_data)
@@ -114,6 +127,7 @@ def handle_client(client_socket, client_addr):
 
             elif data.startswith("/get"):
                 if not alias:
+                    # Outputs an error if the client hasn't registered yet
                     client_socket.send(b"Error: Please register first.")
                 else:
                     parts = data.split()
@@ -127,6 +141,7 @@ def handle_client(client_socket, client_addr):
                         filename = parts[1]
                         file_path = os.path.join(SERVER_DIR, filename)
 
+                        # Checks if the file exists and sends it to the client
                         if os.path.exist(SERVER_DIR, filename):
                             with open(file_path, "rb") as f:
                                 client_socket.sendall(f.read())
@@ -135,6 +150,7 @@ def handle_client(client_socket, client_addr):
 
             elif data == "/dir":
                 if not alias:
+                    # Outputs an error if the client hasn't registered yet
                     client_socket.send(b"Error: Please register first.")
                 else:
                     files = os.listdir(SERVER_DIR)
@@ -177,10 +193,14 @@ Available Commands:
 
 
 def start_server():
+    """
+    Starts the server to listen for incoming client connections.
+    """
+
     # Internet socket, connection-based -> TCP
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    # Bind server to address
+    # Binds server to address
     server_socket.bind((HOST, PORT))
 
     # Sets server to listen
@@ -198,8 +218,10 @@ def start_server():
         ).start()
 
 
-# Checks if the program is being executed directly or imported as a module
-#   - if directly executed, start_server() function is executed
-#   - if imported as a module, the start_server() function won't start unintentionally
+"""
+Checks if the program is being executed directly or imported as a module
+    - if directly executed, start_server() function is executed
+    - if imported as a module, the start_server() function won't start unintentionally
+"""
 if __name__ == "__main__":
     start_server()
