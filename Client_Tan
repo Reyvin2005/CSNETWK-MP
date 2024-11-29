@@ -8,8 +8,11 @@ def receive_messages():
             message = client.recv(1024).decode()
             if message:
                 print("Server:", message)
-        except:
-            print("[ERROR] Connection closed.")
+        except ConnectionResetError:
+            print("[INFO] Connection closed by the server.")
+            break
+        except Exception as e:
+            print(f"[ERROR] {e}")
             break
 
 def send_command(cmd):
@@ -20,11 +23,14 @@ def send_command(cmd):
 
 def send_file(file_path):
     if os.path.exists(file_path):
-        with open(file_path, 'rb') as file:
-            client.send(f"/file {os.path.basename(file_path)}".encode())
-            while chunk := file.read(1024):
-                client.send(chunk)
-            client.send(b"/endfile")
+        try:
+            with open(file_path, 'rb') as file:
+                client.send(f"/file {os.path.basename(file_path)}".encode())
+                while chunk := file.read(1024):
+                    client.send(chunk)
+                client.send(b"/endfile")
+        except Exception as e:
+            print(f"[ERROR] Failed to send file: {e}")
     else:
         print("[ERROR] File does not exist.")
 
@@ -32,8 +38,12 @@ def send_file(file_path):
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # Connect to the server
-server_address = ('localhost', 12345)  # Replace with your server's address and port
-client.connect(server_address)
+server_address = ('127.0.0.1', 12345)  # Replace with your server's address and port
+try:
+    client.connect(server_address)
+except ConnectionRefusedError:
+    print("Error: Connection to the Server has failed! Please check IP Address and Port Number.")
+    exit()
 
 # Start receiving thread
 thread = threading.Thread(target=receive_messages)
@@ -50,9 +60,14 @@ try:
         else:
             send_command(cmd)
         if cmd == "/leave":
+            send_command(cmd)  # Send the leave command to the server
+            print("Connection closed. Thank You!")
             break
 except Exception as e:
     print(f"An error occurred: {e}")
 finally:
-    client.close()
+    try:
+        client.close()
+    except Exception as e:
+        print(f"[ERROR] Failed to close the client socket: {e}")
     thread.join()
