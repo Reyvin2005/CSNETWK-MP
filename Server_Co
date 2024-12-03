@@ -142,7 +142,7 @@ def handle_client(client_socket, client_addr):
                         file_path = os.path.join(SERVER_DIR, filename)
 
                         # Checks if the file exists and sends it to the client
-                        if os.path.exist(SERVER_DIR, filename):
+                        if os.path.exists(SERVER_DIR, filename):
                             with open(file_path, "rb") as f:
                                 client_socket.sendall(f.read())
                         else:
