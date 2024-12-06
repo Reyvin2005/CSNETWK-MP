@@ -115,8 +115,11 @@ def handle_client(client_socket, client_addr):
 
                         # Receives and stores the file data
                         with open(file_path, "wb") as f:
-                            file_data = client_socket.recv(4096)
-                            f.write(file_data)
+                            while True:
+                                chunk = client_socket.recv(4096)
+                                if chunk == b"/endfile":
+                                    break
+                                f.write(chunk)
 
                         timestamp = datetime.datetime.now().strftime(
                             "%Y-%m-%d %H:%M:%S"
@@ -144,7 +147,9 @@ def handle_client(client_socket, client_addr):
                         # Checks if the file exists and sends it to the client
                         if os.path.exists(SERVER_DIR, filename):
                             with open(file_path, "rb") as f:
-                                client_socket.sendall(f.read())
+                                while chunk := f.read(4096):
+                                    client_socket.send(chunk)
+                                client_socket.send(b"/endfile")
                         else:
                             client_socket.send(b"Error: File not found in the server.")
 

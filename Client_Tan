@@ -8,25 +8,33 @@ def receive_messages():
             message = client.recv(1024).decode()
             if message:
                 print("Server:", message)
+                if message == "Connection closed. Thank you!":
+                    break
         except ConnectionResetError:
             print("[INFO] Connection closed by the server.")
             break
         except Exception as e:
             print(f"[ERROR] {e}")
             break
-
+        
 def send_command(cmd):
     try:
         client.send(cmd.encode())
-    except ConnectionError:
-        print("[ERROR] Failed to send command.")
+        if cmd == "/leave":
+            response = client.recv(1024).decode()
+            print("Server:", response)
+            if response == "Connection closed. Thank you!":
+                return True
+    except ConnectionError as e:
+        pass
+    return False
 
 def send_file(file_path):
     if os.path.exists(file_path):
         try:
             with open(file_path, 'rb') as file:
-                client.send(f"/file {os.path.basename(file_path)}".encode())
-                while chunk := file.read(1024):
+                client.send(f"/store {os.path.basename(file_path)}".encode())
+                while chunk := file.read(4096):
                     client.send(chunk)
                 client.send(b"/endfile")
         except Exception as e:
@@ -61,7 +69,6 @@ try:
             send_command(cmd)
         if cmd == "/leave":
             send_command(cmd)  # Send the leave command to the server
-            print("Connection closed. Thank You!")
             break
 except Exception as e:
     print(f"An error occurred: {e}")
