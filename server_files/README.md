@@ -1,2 +1,0 @@
-/dir
-Hello World

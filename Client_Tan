@@ -2,37 +2,76 @@ import socket
 import threading
 import os
 
+
 def receive_messages():
+    """
+    Continuously receives and handles messages from the server.
+    Sets `joined` to True on successful connection, and False on disconnection.
+    Closes the client socket and exits on errors or disconnection.
+    """
+    global joined
     while True:
         try:
             message = client.recv(1024).decode()
             if message:
                 print("Server:", message)
-                if message == "Connection closed. Thank you!":
+
+                if message.strip() == "Connection to the File Exchange Server is successful!":
+                    joined = True
+
+                if message.strip() == "Connection closed. Thank you!":
+                    joined = False
                     break
         except ConnectionResetError:
             print("[INFO] Connection closed by the server.")
+            joined = False
             break
         except Exception as e:
             print(f"[ERROR] {e}")
             break
-        
+
+    client.close()  # Ensure the client socket is closed here
+    os._exit(0)
+
+
 def send_command(cmd):
+    """
+    Sends a command to the server via the client socket.
+
+    Args:
+        cmd (str): The command to be sent
+    """
+
+    global joined
     try:
         client.send(cmd.encode())
         if cmd == "/leave":
-            response = client.recv(1024).decode()
-            print("Server:", response)
-            if response == "Connection closed. Thank you!":
-                return True
+            return True
     except ConnectionError as e:
-        pass
+        print(f"[ERROR] {e}")
+        joined = False
     return False
 
+
 def send_file(file_path):
+    """
+    Sends a file to the connected client.
+
+    This function checks if the specified file exists. If it does, it opens the file in binary read mode,
+    sends a command to the client to store the file with its basename, and then sends the file in chunks
+    of 4096 bytes. After sending the entire file, it sends a command to indicate the end of the file transfer.
+    If the file does not exist, it prints an error message.
+
+    Args:
+        file_path (str): The path to the file to be sent.
+
+    Raises:
+        Exception: If there is an error during the file sending process, it prints an error message with the exception details.
+    """
+
     if os.path.exists(file_path):
         try:
-            with open(file_path, 'rb') as file:
+            with open(file_path, "rb") as file:
                 client.send(f"/store {os.path.basename(file_path)}".encode())
                 while chunk := file.read(4096):
                     client.send(chunk)
@@ -42,34 +81,82 @@ def send_file(file_path):
     else:
         print("[ERROR] File does not exist.")
 
-# Create a socket object
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# Connect to the server
-server_address = ('127.0.0.1', 12345)  # Replace with your server's address and port
+def receive_file(filename):
+    """
+    Receives a file from a client over a network connection.
+
+    Args:
+        filename (str): The name of the file to be received and saved locally.
+
+    Raises:
+        Exception: If there is an error during the file reception process.
+
+    The function expects the client to send the file size first, followed by the file data.
+    It sends an acknowledgment after receiving the file size and writes the received data
+    to a file with the specified filename. If an error occurs during the process, it prints
+    an error message.
+    """
+
+    try:
+        file_size = int(client.recv(1024).decode())
+        client.sendall("ACK".encode())
+        with open(filename, "wb") as f:
+            bytes_received = 0
+            while bytes_received < file_size:
+                data = client.recv(1024)
+                if not data:
+                    break
+                f.write(data)
+                bytes_received += len(data)
+        print(f"{filename} received successfully.")
+    except Exception as e:
+        print(f"[ERROR] Failed to receive file '{filename}': {e}")
+
+
+client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_address = ("127.0.0.1", 12345)
 try:
     client.connect(server_address)
 except ConnectionRefusedError:
     print("Error: Connection to the Server has failed! Please check IP Address and Port Number.")
     exit()
 
-# Start receiving thread
 thread = threading.Thread(target=receive_messages)
 thread.start()
 
-# Send commands to server
 print("Enter commands:")
 try:
+    joined = False
     while True:
         cmd = input("> ")
-        if cmd.startswith("/sendfile "):
-            file_path = cmd.split(" ", 1)[1]
-            send_file(file_path)
+
+        if cmd == "/join":
+            joined = send_command(cmd)
+
+        elif cmd == "/leave":
+            if not joined:
+                print("Error: Disconnection failed. Please connect to the server first.")
+            else:
+                if send_command(cmd):
+                    joined = False
+                    break
+
+        elif cmd.startswith("/sendfile "):
+            if joined:
+                send_file(cmd.split(" ", 1)[1])
+            else:
+                print("[INFO] Please join the server first before sending files.")
+
+        elif cmd.startswith("/getfile "):
+            if joined:
+                receive_file(cmd.split(" ", 1)[1])
+            else:
+                print("[INFO] Please join the server first before receiving files.")
+
         else:
             send_command(cmd)
-        if cmd == "/leave":
-            send_command(cmd)  # Send the leave command to the server
-            break
+
 except Exception as e:
     print(f"An error occurred: {e}")
 finally:

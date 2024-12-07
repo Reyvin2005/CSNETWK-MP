@@ -1,5 +1,5 @@
 1. Requirements
-  Python: Version 3.6+ (Download Python).
+  Python: Version 3.6+ 
   Ensure Python is added to your PATH during installation.
   Operating System: Windows, macOS, or Linux.
 2. Setup

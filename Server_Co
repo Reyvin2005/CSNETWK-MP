@@ -3,6 +3,7 @@ import threading
 import os
 import datetime
 
+# IP Address and Port Number
 HOST = "127.0.0.1"
 PORT = 12345
 
@@ -17,6 +18,55 @@ if not os.path.exists(SERVER_DIR):
 clients = {}
 
 
+def send_file(conn, filename):
+    """
+    Sends a file from the server to the client.
+
+    Args:
+        conn (socket.socket): The socket object for the client connection.
+        filename (str): The name of the file to be sent from the server's directory.
+    """
+    file_path = os.path.join(SERVER_DIR, filename)
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            conn.sendall(f"Sending {filename} from server...".encode())
+            while chunk := f.read(4096):
+                conn.sendall(chunk)
+            conn.sendall(b"/endfile")
+    else:
+        conn.sendall(b"Error: File not found.")
+
+
+def receive_file(conn, filename, handle):
+    """
+    Receives a file from the client and stores it on the server.
+    Args:
+        conn (socket.socket): The socket object for the client connection.
+        filename (str): The name of the file to be received and stored on the server.
+        handle (str): The alias or handle of the client uploading the file.
+    """
+    file_path = os.path.join(SERVER_DIR, filename)
+
+    # Ensure the file doesn't exist already to prevent overwriting
+    if os.path.exists(file_path):
+        conn.sendall(b"Error: File already exists on the server.")
+        return
+
+    try:
+        with open(file_path, 'wb') as f:
+            while True:
+                data = conn.recv(4096)
+                if data == b"/endfile":
+                    break
+                f.write(data)
+        
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn.sendall(f"{handle}<{timestamp}>: Uploaded {filename}".encode())
+    except Exception as e:
+        print(f"[ERROR] Failed to store file '{filename}': {e}")
+        conn.sendall("Error: File could not be stored.".encode())
+        
+
 def handle_client(client_socket, client_addr):
     """
     Handles communication with a connected client.
@@ -25,7 +75,6 @@ def handle_client(client_socket, client_addr):
         client_socket (socket.socket): The socket object for the client connection.
         client_addr (tuple): The address of the connected client.
     """
-
     alias = None
     joined = False
 
@@ -38,130 +87,76 @@ def handle_client(client_socket, client_addr):
             data = client_socket.recv(1024).decode("utf-8").strip()
 
             # Checks if the client has stopped sending data
-            # or if the connection has been closed
             if not data:
                 break
 
-            print(f"[{client_addr} {data}]")
+            print(f"[{client_addr}] {data}")
 
             if data.startswith("/join"):
                 parts = data.split()
-
-                # Checks if correct command syntax
                 if len(parts) != 3:
-                    client_socket.send(
-                        b"Error: Command parameters do not match or is not allowed."
-                    )
+                    client_socket.send(b"Error: Command parameters do not match or is not allowed.")
                 elif joined:
-                    # Outputs an error if the client has already joined/connected
                     client_socket.send(b"Error: Already joined.")
                 else:
                     _, ip, port = data.split()
-
-                    # Checks if correct IP address and port number
                     if ip == HOST and int(port) == PORT:
                         joined = True
-                        client_socket.send(
-                            b"Connection to the File Exchange Server is successful!"
-                        )
+                        client_socket.send(b"Connection to the File Exchange Server is successful!")
                     else:
-                        client_socket.send(
-                            b"Error: Connection to the Server has failed! Please check IP Address and Port Number."
-                        )
+                        client_socket.send(b"Error: Connection to the Server has failed! Please check IP Address and Port Number.")
 
             elif data.startswith("/register"):
                 if not joined:
-                    # Outputs an error if the client hasn't joined the server
                     client_socket.send(b"Error: Please join the server first.")
                 elif alias:
-                    # Outputs an error if the client is already registered
                     client_socket.send(b"Error: Already registered.")
                 else:
                     parts = data.split()
-
-                    # Checks if correct command syntax
                     if len(parts) != 2:
-                        client_socket.send(
-                            b"Error: Command parameters do not match or is not allowed."
-                        )
+                        client_socket.send(b"Error: Command parameters do not match or is not allowed.")
                     else:
                         alias_candidate = parts[1]
-
-                        # Checks if alias already exists
                         if alias_candidate in clients.values():
-                            client_socket.send(
-                                b"Error: Registration failed. Handle or alias already exists."
-                            )
+                            client_socket.send(b"Error: Registration failed. Handle or alias already exists.")
                         else:
                             alias = alias_candidate
                             clients[client_socket] = alias
                             client_socket.send(f"Welcome {alias}!".encode("utf-8"))
 
             elif data.startswith("/store"):
-                if not alias:
-                    # Outputs an error if the client hasn't registered yet
+                if not joined:
+                    client_socket.send(b"Error: Please join the server first.")
+                elif not alias:
                     client_socket.send(b"Error: Please register first.")
                 else:
                     parts = data.split()
-
-                    # Checks if correct command syntax
                     if len(parts) != 2:
-                        client_socket.send(
-                            b"Error: Command parameters do not match or is not allowed."
-                        )
+                        client_socket.send(b"Error: Command parameters do not match or is not allowed.")
                     else:
                         filename = parts[1]
-                        file_path = os.path.join(SERVER_DIR, filename)
-
-                        # Receives and stores the file data
-                        with open(file_path, "wb") as f:
-                            while True:
-                                chunk = client_socket.recv(4096)
-                                if chunk == b"/endfile":
-                                    break
-                                f.write(chunk)
-
-                        timestamp = datetime.datetime.now().strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        )
-                        client_socket.send(
-                            f"{alias}<{timestamp}>: Uploaded {filename}".encode("utf-8")
-                        )
+                        receive_file(client_socket, filename, alias)
 
             elif data.startswith("/get"):
-                if not alias:
-                    # Outputs an error if the client hasn't registered yet
+                if not joined:
+                    client_socket.send(b"Error: Please join the server first.")
+                elif not alias:
                     client_socket.send(b"Error: Please register first.")
                 else:
                     parts = data.split()
-
-                    # Checks if correct command syntax
                     if len(parts) != 2:
-                        client_socket.send(
-                            b"Error: Command parameters do not match or is not allowed."
-                        )
+                        client_socket.send(b"Error: Command parameters do not match or is not allowed.")
                     else:
                         filename = parts[1]
-                        file_path = os.path.join(SERVER_DIR, filename)
-
-                        # Checks if the file exists and sends it to the client
-                        if os.path.exists(SERVER_DIR, filename):
-                            with open(file_path, "rb") as f:
-                                while chunk := f.read(4096):
-                                    client_socket.send(chunk)
-                                client_socket.send(b"/endfile")
-                        else:
-                            client_socket.send(b"Error: File not found in the server.")
+                        send_file(client_socket, filename)
 
             elif data == "/dir":
-                if not alias:
-                    # Outputs an error if the client hasn't registered yet
+                if not joined:
+                    client_socket.send(b"Error: Please join the server first.")
+                elif not alias:
                     client_socket.send(b"Error: Please register first.")
                 else:
                     files = os.listdir(SERVER_DIR)
-
-                    # If the directory contains files, it creates a list of it
-                    # If the directory is empty, it sets file_list to "No files available."
                     file_list = "\n".join(files) if files else "No files available."
                     client_socket.send(file_list.encode("utf-8"))
 
@@ -172,17 +167,18 @@ Available Commands:
 /leave
 /register <handle>
 /store <filename>
-/dir (directory)
+/dir
 /get <filename>
 /? (help)
 """
-                # Sends/displays list of commands to client
                 client_socket.send(commands.encode("utf-8"))
 
             elif data == "/leave":
-                # Clients disconnects -> Server's response
-                client_socket.send(b"Connection closed. Thank you!")
-                break
+                if not joined:
+                    client_socket.send(b"Error: Disconnection failed. Please connect to the server first.")
+                else:
+                    client_socket.send(b"Connection closed. Thank you!")
+                    break
 
             else:
                 client_socket.send(b"Error: Command not found.")
@@ -191,7 +187,6 @@ Available Commands:
             print(f"Error with client {client_addr}: {e}")
             break
 
-    # Cleanup process when a client disconnects or when error occurs
     if alias and client_socket in clients:
         del clients[client_socket]
     client_socket.close()
@@ -201,32 +196,15 @@ def start_server():
     """
     Starts the server to listen for incoming client connections.
     """
-
-    # Internet socket, connection-based -> TCP
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    # Binds server to address
     server_socket.bind((HOST, PORT))
-
-    # Sets server to listen
     server_socket.listen(5)
-
     print(f"[STARTING] Server is running on {HOST}:{PORT}")
 
     while True:
         client_socket, client_addr = server_socket.accept()
-
-        # Effective for handling multiple clients
-        # Ensures each client connection is handled independently
-        threading.Thread(
-            target=handle_client, args=(client_socket, client_addr), daemon=True
-        ).start()
+        threading.Thread(target=handle_client, args=(client_socket, client_addr), daemon=True).start()
 
 
-"""
-Checks if the program is being executed directly or imported as a module
-    - if directly executed, start_server() function is executed
-    - if imported as a module, the start_server() function won't start unintentionally
-"""
 if __name__ == "__main__":
     start_server()
